@@ -1,66 +1,77 @@
 import { NextRequest, NextResponse } from "next/server"
-import { pineconeIndex } from "@/lib/pinecone"
 import OpenAI from "openai"
+import { pineconeIndex } from "@/lib/pinecone"
 import dotenv from "dotenv"
 
 dotenv.config()
 
-export const runtime = "nodejs"
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
 export async function POST(req: NextRequest) {
   try {
     const { query } = await req.json()
-    if (!query) {
-      return NextResponse.json({ error: "No query provided" }, { status: 400 })
-    }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+    if (!query) {
+      return NextResponse.json({ error: "Missing query" }, { status: 400 })
+    }
 
     // 1️⃣ Embed the user query
     const embeddingRes = await openai.embeddings.create({
-      model: "text-embedding-3-small", // match Pinecone dimension
+      model: "text-embedding-3-small",
       input: query,
     })
+    const embedding = embeddingRes.data[0].embedding
 
-    const queryVector = embeddingRes.data[0].embedding
-
-    // 2️⃣ Search Pinecone for relevant chunks
-    const searchRes = await pineconeIndex.namespace("uploaded-docs").query({
-      topK: 1, // get top 5 relevant chunks
-      vector: queryVector,
+    // 2️⃣ Query Pinecone
+    // 2️⃣ Query Pinecone
+    const result = await pineconeIndex.namespace("uploaded-docs").query({
+      vector: embedding,
+      topK: 5,
       includeMetadata: true,
     })
 
-    const matches = searchRes.matches || []
-    const sources = matches.map((m: any) => m.metadata?.chunk).join("\n---\n")
+    console.log("🔍 Raw Pinecone matches:", result.matches?.length)
 
-    // 3️⃣ Ask GPT with retrieved context
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // can use gpt-4o-mini or gpt-4-turbo
+    const matches = result.matches || []
+
+    const contextText = matches
+      .map((m) => m.metadata?.chunk || "")
+      .filter(Boolean)
+      .join("\n\n")
+
+    if (!contextText || contextText.length < 10) {
+      return NextResponse.json({ answer: "No context found for this query (after extraction)." })
+    }
+
+    // 3️⃣ Ask GPT with context
+    const chatRes = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: "You are a helpful assistant. Use the provided context to answer questions. Always cite the relevant sources.",
+          content: "You are an assistant who answers based only on the provided context.",
         },
         {
           role: "user",
-          content: `Question: ${query}\n\nContext:\n${sources}`,
+          content: `Context:\n${contextText}\n\nQuestion: ${query}`,
         },
       ],
     })
 
-    const answer = completion.choices[0].message.content
+    const answer = chatRes.choices[0].message.content
 
     return NextResponse.json({
       answer,
-      sources: matches.map((m: any) => ({
+      sources: matches.map((m) => ({
+        text: m.metadata?.chunk || "[No chunk]",
+        fileName: m.metadata?.fileName || "[Unknown file]",
         score: m.score,
-        fileName: m.metadata?.fileName,
-        text: m.metadata?.chunk,
       })),
     })
+
+
   } catch (error) {
-    console.error("❌ Error in query route:", error)
+    console.error("❌ Error in /api/query:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
