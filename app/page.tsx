@@ -45,36 +45,52 @@ export default function DocumentUpload() {
       const data = await res.json()
       setUploading(false)
 
-      if (res.ok && data.result?.[0]?.text) {
-        setContent(data.result[0].text)
-        setHighlightedContent(data.result[0].text)
+      console.log("📄 Parsed content length:", data.result?.[0]?.text.length)
+      console.log("📄 Full result:", data.result)
+
+
+      if (res.ok && Array.isArray(data.result)) {
+        const fullText = data.result.map((doc: any) => doc.text).join("\n\n")
+        setContent(fullText)
+        setHighlightedContent(fullText)
         setUploaded(true)
       } else {
         setError(data.error || "Failed to extract content.")
       }
+
     } catch (err) {
       setError("Upload failed. Please try again.")
       setUploading(false)
     }
   }
 
-  // 🟨 Highlight function
+
+
   const highlightSources = (text: string, sources: any[]) => {
+    if (!text || sources.length === 0) return text
+
     let highlighted = text
-    sources.forEach((s) => {
-      if (s.text) {
-        // take a slice to make matching easier
-        const snippet = s.text.slice(0, 80)
-        const escaped = snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        const regex = new RegExp(escaped, "i")
-        highlighted = highlighted.replace(
-          regex,
-          `<mark class="bg-yellow-200 px-1 rounded">${snippet}</mark>`
-        )
-      }
+
+    sources.forEach((source) => {
+      const snippet = source.text?.slice(0, 100)
+      if (!snippet) return
+
+      // Escape RegExp characters in snippet
+      const escaped = snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+      // Create a case-insensitive regex for the snippet
+      const regex = new RegExp(escaped, "gi")
+
+      // Replace all matches with <mark>
+      highlighted = highlighted.replace(
+        regex,
+        (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
+      )
     })
+
     return highlighted
   }
+
 
   // 💬 Handle Chat with Docs
   const handleAsk = async () => {
@@ -90,7 +106,9 @@ export default function DocumentUpload() {
       const data = await res.json()
       setAnswer(data.answer || "No answer found")
       setSources(data.sources || [])
-      setHighlightedContent(highlightSources(content, data.sources || []))
+      const highlighted = highlightSources(content, data.sources || [])
+      setHighlightedContent(highlighted)
+
     } catch (err) {
       setAnswer("Error fetching answer.")
     } finally {
@@ -118,11 +136,12 @@ export default function DocumentUpload() {
 
           {content && (
             <div
-              className="mt-6 border p-4 rounded-md bg-gray-50 max-h-[400px] overflow-auto prose dark:prose-invert"
+              className="mt-6 border p-4 rounded-md bg-gray-50 prose dark:prose-invert"
               dangerouslySetInnerHTML={{
                 __html: highlightedContent.replace(/\n/g, "<br/>"),
               }}
             />
+
           )}
         </CardContent>
       </Card>
