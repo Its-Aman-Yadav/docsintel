@@ -65,31 +65,42 @@ export default function DocumentUpload() {
   }
 
 
-
   const highlightSources = (text: string, sources: any[]) => {
     if (!text || sources.length === 0) return text
 
     let highlighted = text
 
     sources.forEach((source) => {
-      const snippet = source.text?.slice(0, 100)
-      if (!snippet) return
+      const fullChunk = source.text?.trim()
+      if (!fullChunk) return
 
-      // Escape RegExp characters in snippet
-      const escaped = snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      // Normalize newlines and spaces to reduce mismatch
+      const normalizedChunk = fullChunk.replace(/\s+/g, " ").trim()
+      const normalizedText = highlighted.replace(/\s+/g, " ")
 
-      // Create a case-insensitive regex for the snippet
-      const regex = new RegExp(escaped, "gi")
+      // Escape RegExp characters from the chunk
+      const escaped = normalizedChunk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-      // Replace all matches with <mark>
-      highlighted = highlighted.replace(
-        regex,
-        (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
-      )
+      try {
+        const regex = new RegExp(escaped, "gi")
+
+        if (regex.test(normalizedText)) {
+          highlighted = highlighted.replace(
+            regex,
+            (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
+          )
+        } else {
+          console.warn("⚠️ Full chunk not matched in text:", normalizedChunk.slice(0, 80) + "...")
+        }
+      } catch (e) {
+        console.error("❌ Error in highlight regex:", e)
+      }
     })
 
     return highlighted
   }
+
+
 
 
   // 💬 Handle Chat with Docs
@@ -138,8 +149,9 @@ export default function DocumentUpload() {
             <div
               className="mt-6 border p-4 rounded-md bg-gray-50 prose dark:prose-invert"
               dangerouslySetInnerHTML={{
-                __html: highlightedContent.replace(/\n/g, "<br/>"),
+                __html: highlightedContent.replace(/\n/g, "<br/>"), // ✅ AFTER highlighting
               }}
+
             />
 
           )}

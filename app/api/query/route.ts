@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     // 2️⃣ Query Pinecone
     const result = await pineconeIndex.namespace("uploaded-docs").query({
       vector: embedding,
-      topK: 5,
+      topK: 1,
       includeMetadata: true,
     })
 
