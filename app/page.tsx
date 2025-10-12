@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function DocumentUpload() {
   const [file, setFile] = useState<File | null>(null)
@@ -17,7 +16,6 @@ export default function DocumentUpload() {
   const [loadingAnswer, setLoadingAnswer] = useState(false)
   const [uploaded, setUploaded] = useState(false)
 
-  // 📂 Handle File Upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] || null)
     setError("")
@@ -45,10 +43,6 @@ export default function DocumentUpload() {
       const data = await res.json()
       setUploading(false)
 
-      console.log("📄 Parsed content length:", data.result?.[0]?.text.length)
-      console.log("📄 Full result:", data.result)
-
-
       if (res.ok && Array.isArray(data.result)) {
         const fullText = data.result.map((doc: any) => doc.text).join("\n\n")
         setContent(fullText)
@@ -57,13 +51,11 @@ export default function DocumentUpload() {
       } else {
         setError(data.error || "Failed to extract content.")
       }
-
     } catch (err) {
       setError("Upload failed. Please try again.")
       setUploading(false)
     }
   }
-
 
   const highlightSources = (text: string, sources: any[]) => {
     if (!text || sources.length === 0) return text
@@ -74,36 +66,27 @@ export default function DocumentUpload() {
       const fullChunk = source.text?.trim()
       if (!fullChunk) return
 
-      // Normalize newlines and spaces to reduce mismatch
       const normalizedChunk = fullChunk.replace(/\s+/g, " ").trim()
       const normalizedText = highlighted.replace(/\s+/g, " ")
 
-      // Escape RegExp characters from the chunk
       const escaped = normalizedChunk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
       try {
         const regex = new RegExp(escaped, "gi")
-
         if (regex.test(normalizedText)) {
           highlighted = highlighted.replace(
             regex,
             (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
           )
-        } else {
-          console.warn("⚠️ Full chunk not matched in text:", normalizedChunk.slice(0, 80) + "...")
         }
       } catch (e) {
-        console.error("❌ Error in highlight regex:", e)
+        console.error("❌ Regex error:", e)
       }
     })
 
     return highlighted
   }
 
-
-
-
-  // 💬 Handle Chat with Docs
   const handleAsk = async () => {
     if (!query) return
     setLoadingAnswer(true)
@@ -119,53 +102,44 @@ export default function DocumentUpload() {
       setSources(data.sources || [])
       const highlighted = highlightSources(content, data.sources || [])
       setHighlightedContent(highlighted)
-
     } catch (err) {
       setAnswer("Error fetching answer.")
     } finally {
       setLoadingAnswer(false)
-      setQuery("") // clear input after asking
+      setQuery("")
     }
   }
 
   return (
-    <div className="max-w-3xl mx-auto mt-10 space-y-8">
-      {/* === Upload Section === */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload Document</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Input type="file" accept=".pdf,.doc,.docx,.txt" onChange={handleFileChange} />
-          {file && <p className="text-sm text-gray-600">Selected: {file.name}</p>}
+    <div className="flex h-[90vh] w-full border rounded-xl overflow-hidden">
+      {/* Left Sidebar */}
+      <div className="w-1/5 border-r p-4 flex flex-col items-start justify-start space-y-4 bg-gray-50">
+        <Input type="file" accept=".pdf,.doc,.docx,.txt" onChange={handleFileChange} />
+        {file && <p className="text-sm text-gray-600">Selected: {file.name}</p>}
+        <Button onClick={handleUpload} disabled={uploading} className="w-full">
+          {uploading ? "Uploading..." : "Upload Document"}
+        </Button>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+      </div>
 
-          <Button onClick={handleUpload} disabled={uploading}>
-            {uploading ? "Uploading..." : "Upload & Parse"}
-          </Button>
+      {/* Document Preview */}
+      <div className="w-2/5 border-r p-4 overflow-y-auto">
+        <h2 className="text-lg font-semibold mb-2 text-center">Document Preview</h2>
+        <div
+          className="prose dark:prose-invert max-h-full"
+          dangerouslySetInnerHTML={{
+            __html: highlightedContent.replace(/\n/g, "<br/>"),
+          }}
+        />
+      </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+      {/* Chat Area */}
+      <div className="w-2/5 p-4 overflow-y-auto">
+        <h2 className="text-lg font-semibold mb-2 text-center">Chat</h2>
 
-          {content && (
-            <div
-              className="mt-6 border p-4 rounded-md bg-gray-50 prose dark:prose-invert"
-              dangerouslySetInnerHTML={{
-                __html: highlightedContent.replace(/\n/g, "<br/>"), // ✅ AFTER highlighting
-              }}
-
-            />
-
-          )}
-        </CardContent>
-      </Card>
-
-      {/* === Chat Section === */}
-      {uploaded ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Chat with Your Document</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
+        {uploaded ? (
+          <>
+            <div className="flex gap-2 mb-4">
               <Input
                 type="text"
                 placeholder="Ask something about your document..."
@@ -178,7 +152,7 @@ export default function DocumentUpload() {
             </div>
 
             {answer && (
-              <div className="p-4 border rounded-md bg-gray-50">
+              <div className="p-4 border rounded-md bg-gray-50 mb-4">
                 <p className="font-semibold mb-1">Answer:</p>
                 <p>{answer}</p>
               </div>
@@ -197,13 +171,13 @@ export default function DocumentUpload() {
                 </ul>
               </div>
             )}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="text-center text-gray-500 italic">
-          Upload a document above to start chatting with it.
-        </div>
-      )}
+          </>
+        ) : (
+          <div className="text-center text-gray-500 italic mt-10">
+            Upload a document to start chatting with it.
+          </div>
+        )}
+      </div>
     </div>
   )
 }
