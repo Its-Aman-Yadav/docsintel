@@ -12,7 +12,10 @@ export default function DocumentUpload() {
   const [highlightedContent, setHighlightedContent] = useState("")
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
-  const [answer, setAnswer] = useState("")
+  const [chatHistory, setChatHistory] = useState<
+    { type: "user" | "ai"; message: string; sources?: any[] }[]
+  >([])
+
   const [sources, setSources] = useState<any[]>([])
   const [loadingAnswer, setLoadingAnswer] = useState(false)
   const [uploaded, setUploaded] = useState(false)
@@ -89,8 +92,11 @@ export default function DocumentUpload() {
 
   const handleAsk = async () => {
     if (!query.trim()) return
+
+    // Push user message
+    setChatHistory((prev) => [...prev, { type: "user", message: query }])
     setLoadingAnswer(true)
-    setAnswer("Thinking...")
+    setQuery("")
 
     try {
       const res = await fetch("/api/query", {
@@ -100,15 +106,23 @@ export default function DocumentUpload() {
       })
 
       const data = await res.json()
-      setAnswer(data.answer || "No answer found")
-      setSources(data.sources || [])
+
+      // Push AI message
+      setChatHistory((prev) => [
+        ...prev,
+        { type: "ai", message: data.answer || "No answer found", sources: data.sources || [] },
+      ])
+
+      // Highlight updated content
       const highlighted = highlightSources(content, data.sources || [])
       setHighlightedContent(highlighted)
     } catch {
-      setAnswer("Error fetching answer.")
+      setChatHistory((prev) => [
+        ...prev,
+        { type: "ai", message: "Error fetching answer." },
+      ])
     } finally {
       setLoadingAnswer(false)
-      setQuery("")
     }
   }
 
@@ -125,12 +139,12 @@ export default function DocumentUpload() {
       <ChatPanel
         uploaded={uploaded}
         query={query}
-        answer={answer}
-        sources={sources}
+        chatHistory={chatHistory}
         loadingAnswer={loadingAnswer}
         onQueryChange={setQuery}
         onAsk={handleAsk}
       />
+
     </div>
   )
 }
