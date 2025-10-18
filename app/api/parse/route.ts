@@ -15,84 +15,84 @@ export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   try {
-    // 1️⃣ File extraction
+    // 1️⃣ Extract multiple files
     const formData = await req.formData()
-    const file = formData.get("file") as File
+    const files = formData.getAll("files") as File[]
 
-    if (!file) {
+    if (!files || files.length === 0) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const extension = mime.extension(file.type) || "pdf"
-    const fileName = `${nanoid()}.${extension}`
-    const tempFilePath = path.join(os.tmpdir(), fileName)
-
-    // Save file temporarily
-    await fs.writeFile(tempFilePath, buffer)
-
-    // 2️⃣ LlamaParse usage
     const reader = new LlamaParseReader({
-      resultType: "text", // Use "text" for maximum raw content extraction
+      resultType: "text",
       apiKey: process.env.LLAMA_CLOUD_API_KEY!,
     })
 
-    const documents = await reader.loadData(tempFilePath)
-    await fs.unlink(tempFilePath) // Clean up temp file
+    const allDocuments: any[] = []
 
-    if (!documents || documents.length === 0) {
+    // Process each file sequentially (or in parallel using Promise.all if preferred)
+    for (const file of files) {
+      const buffer = Buffer.from(await file.arrayBuffer())
+      const extension = mime.extension(file.type) || "pdf"
+      const fileName = `${nanoid()}.${extension}`
+      const tempFilePath = path.join(os.tmpdir(), fileName)
+
+      // Save temporarily
+      await fs.writeFile(tempFilePath, buffer)
+
+      // Parse content using LlamaParse
+      const documents = await reader.loadData(tempFilePath)
+      await fs.unlink(tempFilePath) // cleanup
+
+      if (!documents || documents.length === 0) continue
+
+      // Add filename metadata
+      const withMetadata = documents.map((doc) => ({
+        ...doc,
+        fileName,
+      }))
+
+      allDocuments.push(...withMetadata)
+    }
+
+    if (allDocuments.length === 0) {
       return NextResponse.json({ error: "No documents returned from parser" }, { status: 400 })
     }
 
-    // Join all parsed text together
-    const parsedText = documents.map(doc => doc.text).join("\n\n").trim()
+    // 2️⃣ Join parsed text from all files
+    const parsedText = allDocuments.map((doc) => doc.text).join("\n\n---\n\n")
 
-    if (!parsedText) {
-      return NextResponse.json({ error: "Parsed text is empty" }, { status: 400 })
-    }
-
-    console.log("✅ Pages parsed:", documents.length)
-    console.log("📏 Total parsed text length:", parsedText.length)
-    console.log("📄 Sample parsed text:", parsedText)
-
-    // 3️⃣ Chunking into 1000-character segments
+    // 3️⃣ Chunk into segments
     const chunks = parsedText.match(/(.|[\r\n]){1,1000}/g) || []
-    console.log("🔹 Total chunks created:", chunks.length)
 
-    // 4️⃣ Generate embeddings using OpenAI
+    // 4️⃣ Generate embeddings and upsert into Pinecone
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
-    const vectors: number[][] = []
+    const namespace = "uploaded-docs"
+    const vectors: any[] = []
 
-    for (const chunk of chunks) {
+    for (const [idx, chunk] of chunks.entries()) {
       const response = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: chunk,
       })
-      vectors.push(response.data[0].embedding)
+
+      vectors.push({
+        id: `multi-${idx}-${nanoid()}`,
+        values: response.data[0].embedding,
+        metadata: { chunk, source: "multi-doc-upload" },
+      })
     }
 
-    // 5️⃣ Upsert into Pinecone
-    const namespace = "uploaded-docs"
-    const upserts = vectors.map((embedding, idx) => ({
-      id: `${fileName}-${idx}`,
-      values: embedding,
-      metadata: {
-        chunk: chunks[idx],
-        fileName,
-      },
-    }))
+    await pineconeIndex.namespace(namespace).upsert(vectors)
 
-    await pineconeIndex.namespace(namespace).upsert(upserts)
-
-    // ✅ Success Response
+    // ✅ Response
     return NextResponse.json({
-      message: "File parsed and embedded successfully",
-      result: documents,
-      chunks: chunks.length,
-      uploadedTo: namespace,
-      dimension: vectors[0]?.length || null,
+      message: "All documents parsed and embedded successfully",
+      result: allDocuments,
+      totalFiles: files.length,
+      totalChunks: chunks.length,
+      namespace,
     })
-
   } catch (error) {
     console.error("❌ Error in /api/parse:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

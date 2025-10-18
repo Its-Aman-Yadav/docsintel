@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { FileUploadPanel } from "@/components/FileUploadPanel"
+import { DocumentPreview } from "@/components/DocumentPreview"
+import { ChatPanel } from "@/components/ChatPanel"
 
 export default function DocumentUpload() {
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [content, setContent] = useState("")
   const [highlightedContent, setHighlightedContent] = useState("")
@@ -17,34 +18,33 @@ export default function DocumentUpload() {
   const [uploaded, setUploaded] = useState(false)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFile(e.target.files?.[0] || null)
+    setFiles(Array.from(e.target.files || []))
     setError("")
     setContent("")
-    setUploaded(false)
     setHighlightedContent("")
+    setUploaded(false)
   }
 
   const handleUpload = async () => {
-    if (!file) {
-      setError("Please select a file.")
+    if (files.length === 0) {
+      setError("Please select at least one file.")
       return
     }
 
     const formData = new FormData()
-    formData.append("file", file)
-
+    files.forEach((file) => formData.append("files", file))
     setUploading(true)
+
     try {
       const res = await fetch("/api/parse", {
         method: "POST",
         body: formData,
       })
-
       const data = await res.json()
       setUploading(false)
 
       if (res.ok && Array.isArray(data.result)) {
-        const fullText = data.result.map((doc: any) => doc.text).join("\n\n")
+        const fullText = data.result.map((doc: any) => doc.text).join("\n\n---\n\n")
         setContent(fullText)
         setHighlightedContent(fullText)
         setUploaded(true)
@@ -88,21 +88,23 @@ export default function DocumentUpload() {
   }
 
   const handleAsk = async () => {
-    if (!query) return
+    if (!query.trim()) return
     setLoadingAnswer(true)
     setAnswer("Thinking...")
+
     try {
       const res = await fetch("/api/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
       })
+
       const data = await res.json()
       setAnswer(data.answer || "No answer found")
       setSources(data.sources || [])
       const highlighted = highlightSources(content, data.sources || [])
       setHighlightedContent(highlighted)
-    } catch (err) {
+    } catch {
       setAnswer("Error fetching answer.")
     } finally {
       setLoadingAnswer(false)
@@ -112,72 +114,23 @@ export default function DocumentUpload() {
 
   return (
     <div className="flex h-[90vh] w-full border rounded-xl overflow-hidden">
-      {/* Left Sidebar */}
-      <div className="w-1/5 border-r p-4 flex flex-col items-start justify-start space-y-4 bg-gray-50">
-        <Input type="file" accept=".pdf,.doc,.docx,.txt" onChange={handleFileChange} />
-        {file && <p className="text-sm text-gray-600">Selected: {file.name}</p>}
-        <Button onClick={handleUpload} disabled={uploading} className="w-full">
-          {uploading ? "Uploading..." : "Upload Document"}
-        </Button>
-        {error && <p className="text-sm text-red-500">{error}</p>}
-      </div>
-
-      {/* Document Preview */}
-      <div className="w-2/5 border-r p-4 overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-2 text-center">Document Preview</h2>
-        <div
-          className="prose dark:prose-invert max-h-full"
-          dangerouslySetInnerHTML={{
-            __html: highlightedContent.replace(/\n/g, "<br/>"),
-          }}
-        />
-      </div>
-
-      {/* Chat Area */}
-      <div className="w-2/5 p-4 overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-2 text-center">Chat</h2>
-
-        {uploaded ? (
-          <>
-            <div className="flex gap-2 mb-4">
-              <Input
-                type="text"
-                placeholder="Ask something about your document..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <Button onClick={handleAsk} disabled={loadingAnswer || !query.trim()}>
-                {loadingAnswer ? "Thinking..." : "Ask"}
-              </Button>
-            </div>
-
-            {answer && (
-              <div className="p-4 border rounded-md bg-gray-50 mb-4">
-                <p className="font-semibold mb-1">Answer:</p>
-                <p>{answer}</p>
-              </div>
-            )}
-
-            {sources.length > 0 && (
-              <div className="p-4 border rounded-md bg-gray-50">
-                <p className="font-semibold mb-2">Sources:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  {sources.slice(0, 3).map((s, i) => (
-                    <li key={i}>
-                      <span className="text-gray-700">{s.text?.slice(0, 100)}...</span>{" "}
-                      <span className="text-sm text-gray-500">(from {s.fileName})</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="text-center text-gray-500 italic mt-10">
-            Upload a document to start chatting with it.
-          </div>
-        )}
-      </div>
+      <FileUploadPanel
+        files={files}
+        onFileChange={handleFileChange}
+        onUpload={handleUpload}
+        uploading={uploading}
+        error={error}
+      />
+      <DocumentPreview highlightedContent={highlightedContent} />
+      <ChatPanel
+        uploaded={uploaded}
+        query={query}
+        answer={answer}
+        sources={sources}
+        loadingAnswer={loadingAnswer}
+        onQueryChange={setQuery}
+        onAsk={handleAsk}
+      />
     </div>
   )
 }
