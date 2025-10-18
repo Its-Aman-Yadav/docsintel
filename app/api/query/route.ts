@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "system",
-          content: "You are an intelligent assistant who answers questions strictly based on the provided context.",
+          content: "You are an intelligent assistant who answers questions strictly based on the provided context in the same language as the query. If the context does not contain the answer, respond with 'I don't know.'",
         },
         {
           role: "user",
