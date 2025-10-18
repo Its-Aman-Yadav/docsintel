@@ -72,7 +72,8 @@ export async function POST(req: NextRequest) {
       id: i + 1,
       fileName: m.metadata?.fileName || "Unknown File",
       pageNumber: m.metadata?.pageNumber || null,
-      snippet: m.metadata?.chunk?.slice(0, 100).trim() + "..." || "",
+      snippet: (m.metadata?.chunk as string)?.slice(0, 100).trim() + "..." || "",
+
     }));
 
     return NextResponse.json({
