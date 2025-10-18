@@ -1,77 +1,75 @@
-import { NextRequest, NextResponse } from "next/server"
-import OpenAI from "openai"
-import { pineconeIndex } from "@/lib/pinecone"
-import dotenv from "dotenv"
+import { NextRequest, NextResponse } from "next/server";
+import OpenAI from "openai";
+import { pineconeIndex } from "@/lib/pinecone";
+import dotenv from "dotenv";
 
-dotenv.config()
+dotenv.config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const { query } = await req.json()
+    // Step 1: Extract query and sessionId from request
+    const { query, sessionId } = await req.json();
 
-    if (!query) {
-      return NextResponse.json({ error: "Missing query" }, { status: 400 })
+    if (!query?.trim()) {
+      return NextResponse.json({ error: "Missing query" }, { status: 400 });
     }
 
-    // 1️⃣ Embed the user query
-    const embeddingRes = await openai.embeddings.create({
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+    // Step 2: Embed the query
+    const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: query,
-    })
-    const embedding = embeddingRes.data[0].embedding
+    });
 
-    // 2️⃣ Query Pinecone
-    // 2️⃣ Query Pinecone
-    const result = await pineconeIndex.namespace("uploaded-docs").query({
-      vector: embedding,
-      topK: 1,
-      includeMetadata: true,
-    })
+    const embedding = embeddingResponse.data[0]?.embedding;
 
-    console.log("🔍 Raw Pinecone matches:", result.matches?.length)
-
-    const matches = result.matches || []
-
-    const contextText = matches
-      .map((m) => m.metadata?.chunk || "")
-      .filter(Boolean)
-      .join("\n\n")
-
-    if (!contextText || contextText.length < 10) {
-      return NextResponse.json({ answer: "No context found for this query (after extraction)." })
+    if (!embedding) {
+      throw new Error("Failed to create embedding");
     }
 
-    // 3️⃣ Ask GPT with context
+    // Step 3: Query Pinecone with optional sessionId filter
+    const filter = sessionId ? { sessionId } : undefined;
+
+    const pineconeResponse = await pineconeIndex.namespace("uploaded-docs").query({
+      vector: embedding,
+      topK: 8,
+      includeMetadata: true,
+      filter,
+    });
+
+    const matches = pineconeResponse.matches || [];
+    console.log("🔍 Pinecone matches:", matches.length);
+
+    // Step 4: Extract context from matched chunks
+    const contextText = matches
+      .map((m) => m.metadata?.chunk)
+      .filter(Boolean)
+      .join("\n\n");
+
+    // Step 5: Ask GPT using matched context
     const chatRes = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: "You are an assistant who answers based only on the provided context.",
+          content: "You are an intelligent assistant who answers questions strictly based on the provided context.",
         },
         {
           role: "user",
-          content: `Context:\n${contextText}\n\nQuestion: ${query}`,
+          content: `Here is some context extracted from a document:\n\n${contextText}\n\nNow, based on the above, please answer the following:\n\n${query}`,
         },
       ],
-    })
+    });
 
-    const answer = chatRes.choices[0].message.content
+    const answer = chatRes.choices[0]?.message?.content || "No answer generated";
 
-    return NextResponse.json({
-      answer,
-      sources: matches.map((m) => ({
-        text: m.metadata?.chunk || "[No chunk]",
-        fileName: m.metadata?.fileName || "[Unknown file]",
-        score: m.score,
-      })),
-    })
-
-
+    // ✅ Return answer and matches
+    return NextResponse.json({ answer, matches });
   } catch (error) {
-    console.error("❌ Error in /api/query:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("❌ Error in /api/query:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

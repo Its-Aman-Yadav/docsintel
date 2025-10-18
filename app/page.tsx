@@ -15,13 +15,13 @@ export default function DocumentUpload() {
   const [chatHistory, setChatHistory] = useState<
     { type: "user" | "ai"; message: string; sources?: any[] }[]
   >([])
-
   const [sources, setSources] = useState<any[]>([])
   const [loadingAnswer, setLoadingAnswer] = useState(false)
   const [uploaded, setUploaded] = useState(false)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFiles(Array.from(e.target.files || []))
+    const selectedFiles = Array.from(e.target.files || [])
+    setFiles(selectedFiles)
     setError("")
     setContent("")
     setHighlightedContent("")
@@ -37,25 +37,39 @@ export default function DocumentUpload() {
     const formData = new FormData()
     files.forEach((file) => formData.append("files", file))
     setUploading(true)
+    setError("")
 
     try {
       const res = await fetch("/api/parse", {
         method: "POST",
         body: formData,
       })
+
       const data = await res.json()
+      console.log("📄 API Response:", data)
+
       setUploading(false)
 
-      if (res.ok && Array.isArray(data.result)) {
-        const fullText = data.result.map((doc: any) => doc.text).join("\n\n---\n\n")
-        setContent(fullText)
-        setHighlightedContent(fullText)
-        setUploaded(true)
-      } else {
-        setError(data.error || "Failed to extract content.")
+      if (!res.ok) {
+        throw new Error(data.error || "Server error while uploading.")
       }
-    } catch (err) {
-      setError("Upload failed. Please try again.")
+
+      if (!Array.isArray(data.result)) {
+        throw new Error("Invalid format received from server.")
+      }
+
+      const textData = data.result.map((doc: any) => doc.text).join("\n\n---\n\n")
+
+      if (!textData.trim()) {
+        throw new Error("Extracted content is empty.")
+      }
+
+      setContent(textData)
+      setHighlightedContent(textData)
+      setUploaded(true)
+    } catch (err: any) {
+      console.error("❌ Upload Error:", err.message)
+      setError(err.message || "Upload failed. Please try again.")
       setUploading(false)
     }
   }
@@ -66,24 +80,18 @@ export default function DocumentUpload() {
     let highlighted = text
 
     sources.forEach((source) => {
-      const fullChunk = source.text?.trim()
-      if (!fullChunk) return
+      const raw = source.text?.trim()
+      if (!raw) return
 
-      const normalizedChunk = fullChunk.replace(/\s+/g, " ").trim()
-      const normalizedText = highlighted.replace(/\s+/g, " ")
-
-      const escaped = normalizedChunk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-
+      const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
       try {
         const regex = new RegExp(escaped, "gi")
-        if (regex.test(normalizedText)) {
-          highlighted = highlighted.replace(
-            regex,
-            (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
-          )
-        }
-      } catch (e) {
-        console.error("❌ Regex error:", e)
+        highlighted = highlighted.replace(
+          regex,
+          (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
+        )
+      } catch (err) {
+        console.error("❌ Regex error:", err)
       }
     })
 
@@ -93,7 +101,6 @@ export default function DocumentUpload() {
   const handleAsk = async () => {
     if (!query.trim()) return
 
-    // Push user message
     setChatHistory((prev) => [...prev, { type: "user", message: query }])
     setLoadingAnswer(true)
     setQuery("")
@@ -107,16 +114,18 @@ export default function DocumentUpload() {
 
       const data = await res.json()
 
-      // Push AI message
       setChatHistory((prev) => [
         ...prev,
-        { type: "ai", message: data.answer || "No answer found", sources: data.sources || [] },
+        {
+          type: "ai",
+          message: data.answer || "No answer found.",
+          sources: data.sources || [],
+        },
       ])
 
-      // Highlight updated content
       const highlighted = highlightSources(content, data.sources || [])
       setHighlightedContent(highlighted)
-    } catch {
+    } catch (err) {
       setChatHistory((prev) => [
         ...prev,
         { type: "ai", message: "Error fetching answer." },
@@ -135,7 +144,9 @@ export default function DocumentUpload() {
         uploading={uploading}
         error={error}
       />
+
       <DocumentPreview highlightedContent={highlightedContent} />
+
       <ChatPanel
         uploaded={uploaded}
         query={query}
@@ -144,7 +155,6 @@ export default function DocumentUpload() {
         onQueryChange={setQuery}
         onAsk={handleAsk}
       />
-
     </div>
   )
 }

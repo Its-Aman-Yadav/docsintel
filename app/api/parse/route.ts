@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { promises as fs } from "fs"
 import path from "path"
 import os from "os"
-import { nanoid } from "nanoid"
 import mime from "mime-types"
+import { nanoid } from "nanoid"
 import { LlamaParseReader } from "llama-cloud-services"
 import { pineconeIndex } from "@/lib/pinecone"
 import OpenAI from "openai"
@@ -15,83 +15,94 @@ export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   try {
-    // 1️⃣ Extract multiple files
+    // 🟡 Step 1: Extract files from FormData
     const formData = await req.formData()
     const files = formData.getAll("files") as File[]
 
-    if (!files || files.length === 0) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    if (!files?.length) {
+      return NextResponse.json({ error: "No files uploaded." }, { status: 400 })
     }
 
+    const sessionId = nanoid() // unique ID per upload
     const reader = new LlamaParseReader({
       resultType: "text",
       apiKey: process.env.LLAMA_CLOUD_API_KEY!,
     })
 
     const allDocuments: any[] = []
+    const parsedFiles: string[] = []
 
-    // Process each file sequentially (or in parallel using Promise.all if preferred)
+    // 🔄 Step 2: Loop through each uploaded file
     for (const file of files) {
       const buffer = Buffer.from(await file.arrayBuffer())
-      const extension = mime.extension(file.type) || "pdf"
-      const fileName = `${nanoid()}.${extension}`
-      const tempFilePath = path.join(os.tmpdir(), fileName)
+      const extension = mime.extension(file.type) || "txt"
+      const fileName = file.name || `${nanoid()}.${extension}`
+      const tempPath = path.join(os.tmpdir(), `${nanoid()}.${extension}`)
 
-      // Save temporarily
-      await fs.writeFile(tempFilePath, buffer)
+      // Write file temporarily to disk
+      await fs.writeFile(tempPath, buffer)
 
-      // Parse content using LlamaParse
-      const documents = await reader.loadData(tempFilePath)
-      await fs.unlink(tempFilePath) // cleanup
+      // Parse with LlamaParse
+      const documents = await reader.loadData(tempPath)
+      await fs.unlink(tempPath)
 
-      if (!documents || documents.length === 0) continue
+      if (!documents?.length) continue
 
-      // Add filename metadata
-      const withMetadata = documents.map((doc) => ({
+      const docsWithMeta = documents.map((doc) => ({
         ...doc,
         fileName,
+        sessionId,
       }))
 
-      allDocuments.push(...withMetadata)
+      allDocuments.push(...docsWithMeta)
+      parsedFiles.push(fileName)
     }
 
-    if (allDocuments.length === 0) {
-      return NextResponse.json({ error: "No documents returned from parser" }, { status: 400 })
+    if (!allDocuments.length) {
+      return NextResponse.json({ error: "No content extracted." }, { status: 400 })
     }
 
-    // 2️⃣ Join parsed text from all files
-    const parsedText = allDocuments.map((doc) => doc.text).join("\n\n---\n\n")
+    // 🧱 Step 3: Chunk all text into 1000-character segments
+    const fullText = allDocuments.map((d) => d.text).join("\n\n---\n\n")
+    const chunks = fullText.match(/(.|[\r\n]){1,1000}/g) || []
 
-    // 3️⃣ Chunk into segments
-    const chunks = parsedText.match(/(.|[\r\n]){1,1000}/g) || []
+    if (!chunks.length) {
+      return NextResponse.json({ error: "Failed to chunk content." }, { status: 500 })
+    }
 
-    // 4️⃣ Generate embeddings and upsert into Pinecone
+    // 🧠 Step 4: Create embeddings for each chunk
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
     const namespace = "uploaded-docs"
-    const vectors: any[] = []
+    const vectors = []
 
-    for (const [idx, chunk] of chunks.entries()) {
-      const response = await openai.embeddings.create({
+    for (const [i, chunk] of chunks.entries()) {
+      const embeddingRes = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: chunk,
       })
 
       vectors.push({
-        id: `multi-${idx}-${nanoid()}`,
-        values: response.data[0].embedding,
-        metadata: { chunk, source: "multi-doc-upload" },
+        id: `chunk-${i}-${nanoid()}`,
+        values: embeddingRes.data[0].embedding,
+        metadata: {
+          chunk,
+          sessionId,
+          fileName: parsedFiles[0], // Change if handling multiple filenames per chunk
+        },
       })
     }
 
+    // ⬆️ Step 5: Upsert vectors into Pinecone
     await pineconeIndex.namespace(namespace).upsert(vectors)
 
-    // ✅ Response
+    // ✅ Step 6: Return success
     return NextResponse.json({
-      message: "All documents parsed and embedded successfully",
-      result: allDocuments,
-      totalFiles: files.length,
+      message: "Parsed and embedded successfully",
+      sessionId,
+      totalFiles: parsedFiles.length,
       totalChunks: chunks.length,
-      namespace,
+      parsedFiles,
+      result: allDocuments,
     })
   } catch (error) {
     console.error("❌ Error in /api/parse:", error)
