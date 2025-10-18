@@ -21,11 +21,15 @@ export default function DocumentUpload() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || [])
+
+    // 🧹 Reset all relevant state when new files are selected
     setFiles(selectedFiles)
     setError("")
     setContent("")
     setHighlightedContent("")
     setUploaded(false)
+    setChatHistory([]) // ✅ Clear old chat history completely
+    setSources([])     // ✅ Reset sources to avoid stale highlights
   }
 
   const handleUpload = async () => {
