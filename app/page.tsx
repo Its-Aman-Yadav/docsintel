@@ -103,41 +103,43 @@ export default function DocumentUpload() {
   }
 
   const handleAsk = async () => {
-    if (!query.trim()) return
+    if (!query.trim()) return;
 
-    setChatHistory((prev) => [...prev, { type: "user", message: query }])
-    setLoadingAnswer(true)
-    setQuery("")
+    setChatHistory((prev) => [...prev, { type: "user", message: query }]);
+    setLoadingAnswer(true);
+    setQuery("");
 
     try {
       const res = await fetch("/api/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
-      })
+      });
 
-      const data = await res.json()
+      const data = await res.json();
+      console.log("🧠 Query response:", data);
 
       setChatHistory((prev) => [
         ...prev,
         {
           type: "ai",
           message: data.answer || "No answer found.",
-          sources: data.sources || [],
+          sources: data.citations || [], // ✅ Fixed line
         },
-      ])
+      ]);
 
-      const highlighted = highlightSources(content, data.sources || [])
-      setHighlightedContent(highlighted)
+      const highlighted = highlightSources(content, data.citations || []); // ✅ Fixed line
+      setHighlightedContent(highlighted);
     } catch (err) {
       setChatHistory((prev) => [
         ...prev,
         { type: "ai", message: "Error fetching answer." },
-      ])
+      ]);
     } finally {
-      setLoadingAnswer(false)
+      setLoadingAnswer(false);
     }
-  }
+  };
+
 
   return (
     <div className="flex h-[90vh] w-full border rounded-xl overflow-hidden">

@@ -64,7 +64,23 @@ export async function POST(req: NextRequest) {
       ],
     });
 
+
+
     const answer = chatRes.choices[0]?.message?.content || "No answer generated";
+
+    const citations = matches.map((m, i) => ({
+      id: i + 1,
+      fileName: m.metadata?.fileName || "Unknown File",
+      pageNumber: m.metadata?.pageNumber || null,
+      snippet: m.metadata?.chunk?.slice(0, 100).trim() + "..." || "",
+    }));
+
+    return NextResponse.json({
+      answer,
+      citations: citations.slice(0, 2), // ✅ show only top 2 citations
+    });
+
+
 
     // ✅ Return answer and matches
     return NextResponse.json({ answer, matches });
