@@ -71,13 +71,11 @@ export function ChatPanel({
                             {msg.message}
                             {msg.type === "ai" && msg.sources && msg.sources.length > 0 && (
                                 <div className="mt-3 border-t pt-2 text-xs text-gray-600 dark:text-gray-300">
-                                    <p className="font-semibold mb-1">Sources (Top 2):</p>
+                                    <p className="font-semibold mb-1">Sources:</p>
                                     <ol className="list-decimal ml-5 space-y-2">
                                         {msg.sources.slice(0, 2).map((s) => (
                                             <li key={s.id}>
-                                                <span className="font-medium">{s.fileName}</span>
                                                 {s.pageNumber && <> — page {s.pageNumber}</>}
-                                                <br />
                                                 <span className="italic text-gray-500">“{s.snippet}”</span>
                                             </li>
                                         ))}

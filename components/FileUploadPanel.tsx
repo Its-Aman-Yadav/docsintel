@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { useEffect } from "react"
 
 interface FileUploadPanelProps {
   files: File[]
