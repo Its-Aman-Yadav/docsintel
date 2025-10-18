@@ -1,48 +1,50 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { FileUploadPanel } from "@/components/FileUploadPanel"
-import { DocumentPreview } from "@/components/DocumentPreview"
-import { ChatPanel } from "@/components/ChatPanel"
-  import { useEffect } from "react"
+import { useState, useEffect } from "react";
+import { FileUploadPanel } from "@/components/FileUploadPanel";
+import { DocumentPreview } from "@/components/DocumentPreview";
+import { ChatPanel } from "@/components/ChatPanel";
 
 export default function DocumentUpload() {
-  const [files, setFiles] = useState<File[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [content, setContent] = useState("")
-  const [highlightedContent, setHighlightedContent] = useState("")
-  const [error, setError] = useState("")
-  const [query, setQuery] = useState("")
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [content, setContent] = useState("");
+  const [highlightedContent, setHighlightedContent] = useState("");
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
   const [chatHistory, setChatHistory] = useState<
     { type: "user" | "ai"; message: string; sources?: any[] }[]
-  >([])
-  const [sources, setSources] = useState<any[]>([])
-  const [loadingAnswer, setLoadingAnswer] = useState(false)
-  const [uploaded, setUploaded] = useState(false)
+  >([]);
+  const [sources, setSources] = useState<any[]>([]);
+  const [loadingAnswer, setLoadingAnswer] = useState(false);
+  const [uploaded, setUploaded] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
 
+  // ✅ Safe sessionStorage initialization (client-only)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      let session = sessionStorage.getItem("docsintel_session");
+      if (!session) {
+        session = crypto.randomUUID();
+        sessionStorage.setItem("docsintel_session", session);
+      }
+      setSessionId(session);
+    }
+  }, []);
 
-useEffect(() => {
-  if (!sessionStorage.getItem("docsintel_session")) {
-    sessionStorage.setItem("docsintel_session", crypto.randomUUID());
-  }
-}, []);
-
-const sessionId = sessionStorage.getItem("docsintel_session") || "";
-
-
+  // ✅ File change handler
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || [])
+    const selectedFiles = Array.from(e.target.files || []);
+    setFiles(selectedFiles);
+    setError("");
+    setContent("");
+    setHighlightedContent("");
+    setUploaded(false);
+    setChatHistory([]);
+    setSources([]);
+  };
 
-    // 🧹 Reset all relevant state when new files are selected
-    setFiles(selectedFiles)
-    setError("")
-    setContent("")
-    setHighlightedContent("")
-    setUploaded(false)
-    setChatHistory([]) // ✅ Clear old chat history completely
-    setSources([])     // ✅ Reset sources to avoid stale highlights
-  }
-
+  // ✅ File upload handler
   const handleUpload = async () => {
     if (files.length === 0) {
       setError("Please select at least one file.");
@@ -81,30 +83,30 @@ const sessionId = sessionStorage.getItem("docsintel_session") || "";
     }
   };
 
-
+  // ✅ Highlight matched text snippets
   const highlightSources = (text: string, sources: any[]) => {
-    if (!text || sources.length === 0) return text
+    if (!text || sources.length === 0) return text;
 
-    let highlighted = text
-
+    let highlighted = text;
     sources.forEach((source) => {
-      const raw = source.text?.trim()
-      if (!raw) return
+      const raw = source.text?.trim();
+      if (!raw) return;
 
-      const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       try {
-        const regex = new RegExp(escaped, "gi")
+        const regex = new RegExp(escaped, "gi");
         highlighted = highlighted.replace(
           regex,
           (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
-        )
+        );
       } catch (err) {
-        console.error("❌ Regex error:", err)
+        console.error("❌ Regex error:", err);
       }
-    })
+    });
+    return highlighted;
+  };
 
-    return highlighted
-  }
+  // ✅ Handle chat queries
   const handleAsk = async () => {
     if (!query.trim()) return;
 
@@ -133,6 +135,7 @@ const sessionId = sessionStorage.getItem("docsintel_session") || "";
       const highlighted = highlightSources(content, data.citations || []);
       setHighlightedContent(highlighted);
     } catch (err) {
+      console.error("❌ Query Error:", err);
       setChatHistory((prev) => [
         ...prev,
         { type: "ai", message: "Error fetching answer." },
@@ -141,8 +144,6 @@ const sessionId = sessionStorage.getItem("docsintel_session") || "";
       setLoadingAnswer(false);
     }
   };
-
-
 
   return (
     <div className="flex h-[90vh] w-full border rounded-xl overflow-hidden">
@@ -165,5 +166,5 @@ const sessionId = sessionStorage.getItem("docsintel_session") || "";
         onAsk={handleAsk}
       />
     </div>
-  )
+  );
 }
