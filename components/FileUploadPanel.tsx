@@ -1,10 +1,13 @@
 "use client"
 
-import React, { useCallback, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Upload, FileText, X } from "lucide-react"
+import { Upload, FileText, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { signOut, onAuthStateChanged } from "firebase/auth"
+import { auth } from "@/lib/firebase"
+import { useRouter } from "next/navigation"
 
 interface FileUploadPanelProps {
   files: File[]
@@ -21,8 +24,19 @@ export function FileUploadPanel({
   uploading,
   error,
 }: FileUploadPanelProps) {
+  const router = useRouter()
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 🔐 Redirect if not authenticated
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push("/")
+      }
+    })
+    return () => unsubscribe()
+  }, [router])
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -50,6 +64,15 @@ export function FileUploadPanel({
 
   const triggerFileSelect = () => {
     fileInputRef.current?.click()
+  }
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+      router.push("/")
+    } catch (err) {
+      console.error("Logout failed", err)
+    }
   }
 
   return (
@@ -88,12 +111,8 @@ export function FileUploadPanel({
           </div>
         </div>
 
-        {/* Error */}
-        {error && (
-          <p className="text-red-500 text-sm mt-2 text-center">{error}</p>
-        )}
+        {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
 
-        {/* Files List */}
         {files.length > 0 && (
           <div className="mt-4 space-y-2 text-sm">
             {files.map((file, index) => (
@@ -111,14 +130,22 @@ export function FileUploadPanel({
         )}
       </div>
 
-      {/* Upload Button */}
-      <div className="mt-6">
+      <div className="mt-6 space-y-3">
         <Button
           onClick={onUpload}
           disabled={uploading || files.length === 0}
           className="w-full rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-3"
         >
           {uploading ? "Uploading..." : "Upload & Process"}
+        </Button>
+
+        <Button
+          onClick={handleLogout}
+          variant="outline"
+          className="w-full rounded-full border-gray-300 text-gray-700 dark:text-white dark:border-gray-700 text-sm py-3 flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          Log Out
         </Button>
       </div>
     </div>
