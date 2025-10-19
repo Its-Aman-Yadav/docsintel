@@ -31,6 +31,8 @@ export const Sources: React.FC<SourcesProps> = ({ sources }) => {
               📄 {source.fileName ?? `Unnamed Source #${index + 1}`}
             </p>
 
+            <p className="text-sm text-blue-600 text-bold">Source chunk:</p>
+
             {/* ✅ Text chunk */}
             <p className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap leading-relaxed">
               {source.text}
