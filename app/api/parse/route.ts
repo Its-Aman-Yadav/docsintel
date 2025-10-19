@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     // 🧩 Step 3: Combine & chunk text into ~1000-character segments
     const fullText = allDocuments.map((d) => d.text).join("\n\n---\n\n");
-    const chunks = fullText.match(/(.|[\r\n]){1,1000}/g) || [];
+    const chunks = fullText.match(/(.|[\r\n]){1,500}/g) || [];
 
     if (!chunks.length) {
       return NextResponse.json({ error: "Failed to chunk content." }, { status: 500 });

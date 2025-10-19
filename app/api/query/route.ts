@@ -72,13 +72,12 @@ export async function POST(req: NextRequest) {
       id: i + 1,
       fileName: m.metadata?.fileName || "Unknown File",
       pageNumber: m.metadata?.pageNumber || null,
-      snippet: (m.metadata?.chunk as string)?.slice(0, 100).trim() + "..." || "",
-
+      text: (m.metadata?.chunk as string)?.trim() || "(No chunk found)",
     }));
 
     return NextResponse.json({
       answer,
-      citations: citations.slice(0, 2), // ✅ show only top 2 citations
+      citations: citations.slice(0, 1), // ✅ show only top 2 citations
     });
 
 

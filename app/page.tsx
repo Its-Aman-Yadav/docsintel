@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { FileUploadPanel } from "@/components/FileUploadPanel";
-import { DocumentPreview } from "@/components/DocumentPreview";
 import { ChatPanel } from "@/components/ChatPanel";
+import { Sources } from "@/components/Sources";
+
 
 export default function DocumentUpload() {
   const [files, setFiles] = useState<File[]>([]);
@@ -83,36 +84,17 @@ export default function DocumentUpload() {
     }
   };
 
-  // ✅ Highlight matched text snippets
-  const highlightSources = (text: string, sources: any[]) => {
-    if (!text || sources.length === 0) return text;
 
-    let highlighted = text;
-    sources.forEach((source) => {
-      const raw = source.text?.trim();
-      if (!raw) return;
-
-      const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      try {
-        const regex = new RegExp(escaped, "gi");
-        highlighted = highlighted.replace(
-          regex,
-          (match) => `<mark class="bg-yellow-200 px-1 rounded">${match}</mark>`
-        );
-      } catch (err) {
-        console.error("❌ Regex error:", err);
-      }
-    });
-    return highlighted;
-  };
-
-  // ✅ Handle chat queries
   const handleAsk = async () => {
     if (!query.trim()) return;
 
+    // Add user message
     setChatHistory((prev) => [...prev, { type: "user", message: query }]);
+
+    // Reset states
     setLoadingAnswer(true);
     setQuery("");
+    setSources([]); // ✅ Clear previous sources on new question
 
     try {
       const res = await fetch("/api/query", {
@@ -123,6 +105,7 @@ export default function DocumentUpload() {
 
       const data = await res.json();
 
+      // Add AI response with sources
       setChatHistory((prev) => [
         ...prev,
         {
@@ -132,8 +115,25 @@ export default function DocumentUpload() {
         },
       ]);
 
-      const highlighted = highlightSources(content, data.citations || []);
-      setHighlightedContent(highlighted);
+      if (Array.isArray(data.citations)) {
+        const mapped = data.citations.map((source: any, i: number) => {
+          const matchedFile = files.find((file) =>
+            source.documentName?.includes(file.name.split(".")[0])
+          );
+
+          return {
+            text: source.text || "No text chunk provided.",
+            fileName: matchedFile?.name || source.fileName || source.documentName || `Source #${i + 1}`,
+          };
+        });
+
+        setSources(mapped);
+      }
+
+
+
+      // ✅ Set only latest sources
+      setSources(data.citations || []);
     } catch (err) {
       console.error("❌ Query Error:", err);
       setChatHistory((prev) => [
@@ -145,6 +145,7 @@ export default function DocumentUpload() {
     }
   };
 
+
   return (
     <div className="flex h-[90vh] w-full border rounded-xl overflow-hidden">
       <FileUploadPanel
@@ -155,8 +156,6 @@ export default function DocumentUpload() {
         error={error}
       />
 
-      <DocumentPreview highlightedContent={highlightedContent} />
-
       <ChatPanel
         uploaded={uploaded}
         query={query}
@@ -165,6 +164,9 @@ export default function DocumentUpload() {
         onQueryChange={setQuery}
         onAsk={handleAsk}
       />
+      <div className="w-[50%] bg-gray-50 overflow-y-auto">
+        <Sources sources={sources} />
+      </div>
     </div>
   );
 }
