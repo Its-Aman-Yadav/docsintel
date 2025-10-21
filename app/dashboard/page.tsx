@@ -85,16 +85,18 @@ export default function DocumentUpload() {
 
       const data = await res.json()
       console.log("📄 Upload Response:", data)
-
       if (!res.ok) throw new Error(data.error || "Upload error.")
-      if (!Array.isArray(data.result)) throw new Error("Unexpected format.")
 
-      const textData = data.result.map((doc: any) => doc.text).join("\n\n---\n\n")
-      if (!textData.trim()) throw new Error("Empty content.")
+      // ✅ Check the correct structure
+      if (!data?.message || !data?.sessionId) {
+        throw new Error("Unexpected format.")
+      }
 
-      setContent(textData)
-      setHighlightedContent(textData)
+      console.log("✅ Upload successful:", data)
+
+      // You can skip setting `content` for now unless you have a preview feature
       setUploaded(true)
+
     } catch (err: any) {
       console.error("❌ Upload Error:", err.message)
       setError(err.message || "Upload failed.")
